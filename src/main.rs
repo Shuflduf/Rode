@@ -1,6 +1,8 @@
 use eframe::egui;
 mod app;
 mod menu;
+mod file_ops;
+mod vim_motions;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {

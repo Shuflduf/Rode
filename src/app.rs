@@ -14,6 +14,8 @@ pub struct CatEditorApp {
     pub command_buffer: String,
     pub should_quit: bool,
     pub current_file: Option<String>,
+    pub cursor_pos: usize,
+    pub pending_motion: Option<char>,
 }
 
 impl Default for CatEditorApp {
@@ -24,6 +26,8 @@ impl Default for CatEditorApp {
             command_buffer: String::new(),
             should_quit: false,
             current_file: None,
+            cursor_pos: 0,
+            pending_motion: None,
         }
     }
 }
@@ -41,6 +45,10 @@ impl eframe::App for CatEditorApp {
                     self.mode = Mode::Normal;
                 }
             } else if self.mode == Mode::Normal {
+
+                //handle the vim motions
+                crate::vim_motions::handle_normal_mode_input(self, i);
+
                 if i.key_pressed(egui::Key::I) {
                     self.mode = Mode::Insert;
                 } else if i.key_pressed(egui::Key::Colon) {
@@ -93,14 +101,31 @@ impl eframe::App for CatEditorApp {
                         },
                     );
 
-                    let text_edit = egui::TextEdit::multiline(&mut self.text)
+                    let mut text_edit = egui::TextEdit::multiline(&mut self.text)
                         .font(egui::TextStyle::Monospace)
                         .frame(false);
 
-                    let response = ui.add_sized(ui.available_size(), text_edit);
+                    if self.mode == Mode::Normal {
+                        text_edit = text_edit.cursor_at_end(false);
+                    }
 
+                    let mut output = text_edit.show(ui);
+                    
                     if self.mode == Mode::Insert {
-                        response.request_focus();
+                        output.response.request_focus();
+                        if let Some(cursor) = output.cursor_range {
+                            self.cursor_pos = cursor.primary.ccursor.index;
+                        }
+                    } else if self.mode == Mode::Normal {
+                        let mut state = output.state;
+
+                        let ccursor = egui::text::CCursor::new(self.cursor_pos);
+                        state
+                            .cursor
+                            .set_char_range(Some(egui::text::CCursorRange::one(ccursor)));
+
+                        state.store(ctx, output.response.id);
+                        output.response.request_focus();
                     }
                 });
             });
