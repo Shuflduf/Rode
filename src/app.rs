@@ -39,20 +39,17 @@ impl eframe::App for CatEditorApp {
             return;
         }
 
-        // Keyboard handling (vim layer + mode switching)
         ctx.input(|i| {
             if self.mode == Mode::Insert {
                 if i.key_pressed(egui::Key::Escape) {
                     self.mode = Mode::Normal;
 
-                    // Clamp cursor (char-based)
                     let max = self.text.chars().count();
                     if self.cursor_pos > max {
                         self.cursor_pos = max;
                     }
                 }
             } else if self.mode == Mode::Normal {
-                // Vim motions / normal-mode commands:
                 crate::vim_motions::handle_normal_mode_input(self, i);
 
                 if i.key_pressed(egui::Key::I) {
@@ -71,11 +68,9 @@ impl eframe::App for CatEditorApp {
             }
         });
 
-        // Menu bar
         menu::show_menu_bar(ctx, self);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Status bar
             egui::TopBottomPanel::bottom("status_bar").show_inside(ui, |ui| {
                 let mode_text = match self.mode {
                     Mode::Insert => "-- INSERT --",
@@ -87,7 +82,6 @@ impl eframe::App for CatEditorApp {
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.horizontal_top(|ui| {
-                    // Line numbers column
                     let line_count = self.text.lines().count().max(1);
                     let line_number_width = 20.0;
 
@@ -106,31 +100,18 @@ impl eframe::App for CatEditorApp {
                         },
                     );
 
-                    // ==========================
-                    // Text editor area
-                    // ==========================
-
-                    // In Normal mode, we MUST NOT allow typed characters to modify the buffer,
-                    // BUT your vim_motions currently depends on Event::Text to detect commands.
-                    //
-                    // Solution:
-                    // - Let TextEdit receive events (so caret can render + vim_motions still works),
-                    // - then restore the text back to the pre-frame snapshot in Normal mode.
                     let old_text = if self.mode == Mode::Normal {
                         Some(self.text.clone())
                     } else {
                         None
                     };
 
-                    // Keep TextEdit interactive so it draws a caret when focused.
-                    // We'll undo edits in Normal mode via snapshot restore.
                     let text_edit = egui::TextEdit::multiline(&mut self.text)
                         .font(egui::TextStyle::Monospace)
                         .frame(false)
                         .desired_width(f32::INFINITY)
                         .interactive(true);
 
-                    // Make it take remaining horizontal space
                     let available = ui.available_size();
                     let mut output = ui.allocate_ui(available, |ui| text_edit.show(ui)).inner;
 
@@ -142,16 +123,14 @@ impl eframe::App for CatEditorApp {
                             }
                         }
                         Mode::Normal => {
-                            // Keep focus so caret is visible
                             output.response.request_focus();
 
-                            // Force egui caret to match our vim cursor position
                             let mut state = output.state;
                             let ccursor = egui::text::CCursor::new(self.cursor_pos);
                             state.cursor.set_char_range(Some(egui::text::CCursorRange::one(ccursor)));
                             state.store(ctx, output.response.id);
 
-                            // Undo any buffer edits that occurred from typed keys this frame
+                            // undo any buffer edits that occurred from typed keys this frame
                             if let Some(old) = old_text {
                                 if self.text != old {
                                     self.text = old;
@@ -159,7 +138,6 @@ impl eframe::App for CatEditorApp {
                             }
                         }
                         Mode::Command => {
-                            // Optional: you may want to keep focus off editor while typing commands
                             // output.response.surrender_focus();
                         }
                     }
@@ -167,7 +145,6 @@ impl eframe::App for CatEditorApp {
             });
         });
 
-        // Command-line input capture
         if self.mode == Mode::Command {
             ctx.input(|i| {
                 for event in &i.events {
