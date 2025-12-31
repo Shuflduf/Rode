@@ -130,7 +130,7 @@ impl CommandPalette {
                     .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
                     .inner_margin(egui::Margin::same(10.0))
                     .show(ui, |ui| {
-                        ui.set_min_size(egui::vec2(ui.available_width(), 300.0));
+                        ui.set_min_size(egui::vec2(ui.available_width(), 20.0));
                         egui::ScrollArea::vertical()
                             .max_height(300.0)
                             .show(ui, |ui| {
@@ -141,10 +141,10 @@ impl CommandPalette {
                                             egui::Button::new("")
                                                 .frame(false)
                                         );
-
+                                        
                                         let rect = response.rect;
                                         let painter = ui.painter();
-
+                                        
                                         painter.text(
                                             egui::pos2(rect.left() + 10.0, rect.top() + 12.0),
                                             egui::Align2::LEFT_TOP,
@@ -156,7 +156,7 @@ impl CommandPalette {
                                                 ui.visuals().text_color()
                                             }
                                         );
-
+                                        
                                         painter.text(
                                             egui::pos2(rect.left() + 10.0, rect.top() + 30.0),
                                             egui::Align2::LEFT_TOP,
