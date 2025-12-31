@@ -130,6 +130,7 @@ impl CommandPalette {
                     .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
                     .inner_margin(egui::Margin::same(10.0))
                     .show(ui, |ui| {
+                        ui.set_min_size(egui::vec2(ui.available_width(), 300.0));
                         egui::ScrollArea::vertical()
                             .max_height(300.0)
                             .show(ui, |ui| {
