@@ -4,6 +4,7 @@ use crate::setup::theme;
 use crate::config::theme_manager::{ThemeColors, load_theme};
 use crate::command_palette::CommandPalette;
 use crate::hotkey::find_replace::FindReplace;
+use crate::hotkey::command_input::CommandInput;
 
 #[derive(PartialEq)]
 pub enum Mode {
@@ -27,6 +28,7 @@ pub struct CatEditorApp {
     
     pub command_palette: CommandPalette,
     pub find_replace: FindReplace,
+    pub command_input: CommandInput, // Added field
 }
 
 impl Default for CatEditorApp {
@@ -45,6 +47,7 @@ impl Default for CatEditorApp {
             theme_menu_open: false,
             command_palette: CommandPalette::default(),
             find_replace: FindReplace::default(),
+            command_input: CommandInput::default(),
         }
     }
 }
@@ -82,7 +85,6 @@ impl eframe::App for CatEditorApp {
             if self.mode == Mode::Insert {
                 if i.key_pressed(egui::Key::Escape) {
                     self.mode = Mode::Normal;
-
                     let max = self.text.chars().count();
                     if self.cursor_pos > max {
                         self.cursor_pos = max;
@@ -94,30 +96,26 @@ impl eframe::App for CatEditorApp {
                 if i.key_pressed(egui::Key::I) {
                     self.mode = Mode::Insert;
                 } else if i.key_pressed(egui::Key::Colon) {
-                    self.mode = Mode::Command;
-                    self.command_buffer.clear();
-                }
-            } else if self.mode == Mode::Command {
-                if i.key_pressed(egui::Key::Escape) {
-                    self.mode = Mode::Normal;
-                    self.command_buffer.clear();
-                } else if i.key_pressed(egui::Key::Enter) {
-                    self.execute_command(ctx);
+                    self.command_input.open();
                 }
             }
         });
 
         menu::show_menu_bar(ctx, self);
-
         self.command_palette.show(ctx);
         self.find_replace.show(ctx, &mut self.text);
+
+        if let Some(cmd) = self.command_input.show(ctx) {
+            self.command_buffer = cmd;
+            self.execute_command(ctx);
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::TopBottomPanel::bottom("status_bar").show_inside(ui, |ui| {
                 let mode_text = match self.mode {
                     Mode::Insert => "-- INSERT --",
                     Mode::Normal => "-- NORMAL --",
-                    Mode::Command => &format!(":{}", self.command_buffer),
+                    Mode::Command => "",
                 };
                 ui.label(mode_text);
             });
@@ -185,48 +183,24 @@ impl eframe::App for CatEditorApp {
                                 }
                             }
                         }
-                        Mode::Command => {
-                        }
+                        Mode::Command => {}
                     }
                 });
             });
         });
-
-        if self.mode == Mode::Command {
-            ctx.input(|i| {
-                for event in &i.events {
-                    if let egui::Event::Text(text) = event {
-                        if text != ":" {
-                            self.command_buffer.push_str(text);
-                        }
-                    } else if let egui::Event::Key {
-                        key: egui::Key::Backspace,
-                        pressed: true,
-                        ..
-                    } = event
-                    {
-                        self.command_buffer.pop();
-                    }
-                }
-            });
-        }
     }
 }
 
 impl CatEditorApp {
     fn execute_command(&mut self, _ctx: &egui::Context) {
         match self.command_buffer.trim() {
-            "q" => {
-                self.should_quit = true;
-            }
+            "q" => { self.should_quit = true; }
             "w" => {
                 if let Some(path) = &self.current_file {
                     let _ = std::fs::write(path, &self.text);
-                    self.mode = Mode::Normal;
                 } else if let Some(path) = rfd::FileDialog::new().save_file() {
                     let _ = std::fs::write(&path, &self.text);
                     self.current_file = Some(path.display().to_string());
-                    self.mode = Mode::Normal;
                 }
             }
             "wq" => {
@@ -237,9 +211,9 @@ impl CatEditorApp {
             }
             _ => {
                 println!("Unknown command: {}", self.command_buffer);
-                self.mode = Mode::Normal;
             }
         }
         self.command_buffer.clear();
+        self.mode = Mode::Normal;
     }
 }
