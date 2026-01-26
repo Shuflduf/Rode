@@ -28,6 +28,13 @@ fn show_file_menu(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut CatEditorApp
             }
             ui.close_menu();
         }
+        if ui.button("Open Folder...").clicked() {
+            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                app.current_folder = Some(path.clone());
+                app.fuzzy_finder.set_folder(path);
+            }
+            ui.close_menu();
+        }
         ui.separator();
         if ui.button("Save").clicked() {
             if let Some(path) = &app.current_file {
