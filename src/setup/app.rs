@@ -7,7 +7,6 @@ use crate::hotkey::find_replace::FindReplace;
 use crate::setup::menu;
 use crate::setup::theme;
 use crate::terminal::Terminal;
-use crate::vim_mode::{VimState, VimMode};
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -17,10 +16,8 @@ pub struct CatEditorApp {
     pub should_quit: bool,
     pub current_file: Option<String>,
     pub current_folder: Option<PathBuf>,
-    pub cursor_pos: usize,
 
     pub theme: ThemeColors,
-    pub vim_state: VimState,
 
     pub command_palette: CommandPalette,
     pub find_replace: FindReplace,
@@ -28,9 +25,6 @@ pub struct CatEditorApp {
     pub fuzzy_finder: FuzzyFinder,
     pub file_tree: FileTree,
     pub terminal: Terminal,
-    
-    // tracking text changes in normal mode
-    last_text: String,
 
     leader_pressed: bool,
     leader_sequence: String,
@@ -45,16 +39,13 @@ impl Default for CatEditorApp {
             should_quit: false,
             current_file: None,
             current_folder: None,
-            cursor_pos: 0,
             theme,
-            vim_state: VimState::default(),
             command_palette: CommandPalette::default(),
             find_replace: FindReplace::default(),
             command_input: CommandInput::default(),
             fuzzy_finder: FuzzyFinder::default(),
             file_tree: FileTree::default(),
             terminal: Terminal::default(),
-            last_text: String::new(),
             leader_pressed: false,
             leader_sequence: String::new(),
         }
@@ -130,7 +121,7 @@ impl eframe::App for CatEditorApp {
         }
 
         self.find_replace
-            .show(ctx, &mut self.text, &mut self.cursor_pos);
+            .show(ctx, &mut self.text, &mut &mut 0);
 
         if let Some(cmd) = self.command_input.show(ctx) {
             self.command_buffer = cmd;
@@ -149,9 +140,9 @@ impl eframe::App for CatEditorApp {
             egui::TopBottomPanel::bottom("status_bar").show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     let mode_text = if !self.leader_sequence.is_empty() {
-                        format!("{} - {}", self.vim_state.get_mode_string(), self.leader_sequence)
+                        format!("NORMAL - {}", self.leader_sequence)
                     } else {
-                        self.vim_state.get_mode_string()
+                        "NORMAL".to_string()
                     };
 
                     ui.label(
@@ -161,14 +152,6 @@ impl eframe::App for CatEditorApp {
                     );
 
                     ui.separator();
-
-                    // Show cursor position
-                    let (line, col) = self.get_cursor_line_col();
-                    ui.label(
-                        egui::RichText::new(format!("Ln {}, Col {}", line + 1, col + 1))
-                            .color(egui::Color32::from_gray(150))
-                            .text_style(egui::TextStyle::Small),
-                    );
 
                     // Show current folder if open
                     if let Some(folder) = &self.current_folder {
@@ -183,7 +166,8 @@ impl eframe::App for CatEditorApp {
                 });
             });
 
-            if !modals_open && matches!(self.vim_state.mode, VimMode::Normal) {
+            // Handle leader key sequences
+            if !modals_open {
                 ctx.input(|i| {
                     if i.key_pressed(egui::Key::Space) && !i.modifiers.any() {
                         self.leader_pressed = true;
@@ -238,16 +222,6 @@ impl eframe::App for CatEditorApp {
                 self.leader_sequence.clear();
             }
 
-            // Handle Vim motions if no modals are open
-            // Store text before handling vim input
-            if !modals_open && matches!(self.vim_state.mode, VimMode::Normal) {
-                self.last_text = self.text.clone();
-            }
-            
-            if !modals_open  && !self.leader_pressed{
-                self.vim_state.handle_input(ctx, &mut self.text, &mut self.cursor_pos);
-            }
-
             egui::ScrollArea::vertical()
                 .id_salt("main_scroll_area")
                 .show(ui, |ui| {
@@ -277,92 +251,10 @@ impl eframe::App for CatEditorApp {
                         let text_edit = egui::TextEdit::multiline(&mut self.text)
                             .font(egui::TextStyle::Monospace)
                             .frame(false)
-                            .desired_width(f32::INFINITY)
-                            .cursor_at_end(false);
+                            .desired_width(f32::INFINITY);
 
                         let available = ui.available_size();
-                        let mut output = ui.allocate_ui(available, |ui| text_edit.show(ui)).inner;
-
-                        // In Normal mode, revert any text changes made by the widget
-                        if matches!(self.vim_state.mode, VimMode::Normal) && self.text != self.last_text {
-                            self.text = self.last_text.clone();
-                        }
-
-                        // sync widget cursor with vim cursor 
-                        if matches!(self.vim_state.mode, VimMode::Normal) {
-                            // hard force the widget to use our cursor
-                            let cursor = output.galley.from_ccursor(egui::text::CCursor::new(self.cursor_pos));
-                            let cursor_range = egui::text::CursorRange::one(cursor);
-                            output.state.cursor.set_range(Some(cursor_range));
-                            output.state.store(ui.ctx(), output.response.id);
-                        }
-
-                        // Draw custom block cursor for Normal mode
-                        if matches!(self.vim_state.mode, VimMode::Normal) {
-                            let galley = output.galley.clone();
-                            let text_draw_pos = output.galley_pos;
-                            let painter = ui.painter();
-
-                            // Find cursor position in galley
-                            let cursor = galley.from_ccursor(egui::text::CCursor::new(self.cursor_pos));
-                            
-                            if cursor.rcursor.row < galley.rows.len() {
-                                let row = &galley.rows[cursor.rcursor.row];
-                                let row_rect = row.rect;
-                                
-                                // Get the position of the character at cursor
-                                let char_x = if cursor.rcursor.column < row.glyphs.len() {
-                                    row.glyphs[cursor.rcursor.column].pos.x
-                                } else if row_rect.width() > 0.0 {
-                                    row_rect.max.x
-                                } else {
-                                    0.0
-                                };
-                                
-                                // Get character width for block cursor
-                                let char_width = if cursor.rcursor.column < row.glyphs.len() {
-                                    let glyph = &row.glyphs[cursor.rcursor.column];
-                                    glyph.size().x.max(8.0)
-                                } else {
-                                    8.0 // Default width if at end of line
-                                };
-                                
-                                // Draw block cursor
-                                let cursor_rect = egui::Rect::from_min_size(
-                                    text_draw_pos + egui::vec2(char_x, row_rect.min.y),
-                                    egui::vec2(char_width, row_rect.height()),
-                                );
-                                
-                                // Draw a semi-transparent block cursor
-                                painter.rect_filled(
-                                    cursor_rect,
-                                    egui::Rounding::ZERO,
-                                    egui::Color32::from_rgba_unmultiplied(100, 150, 255, 120),
-                                );
-                                
-                                // Draw cursor outline
-                                painter.rect_stroke(
-                                    cursor_rect,
-                                    egui::Rounding::ZERO,
-                                    egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 150, 255)),
-                                );
-                                
-                                // Draw the character in inverse color for better visibility
-                                if cursor.rcursor.column < row.glyphs.len() {
-                                    let chars: Vec<char> = self.text.chars().collect();
-                                    if self.cursor_pos < chars.len() {
-                                        let ch = chars[self.cursor_pos];
-                                        painter.text(
-                                            text_draw_pos + egui::vec2(char_x, row_rect.min.y),
-                                            egui::Align2::LEFT_TOP,
-                                            ch.to_string(),
-                                            egui::FontId::monospace(14.0),
-                                            egui::Color32::from_rgb(30, 30, 30),
-                                        );
-                                    }
-                                }
-                            }
-                        }
+                        let output = ui.allocate_ui(available, |ui| text_edit.show(ui)).inner;
 
                         if self.find_replace.open && !self.find_replace.find_text.is_empty() {
                             let galley = output.galley.clone();
@@ -436,19 +328,12 @@ impl eframe::App for CatEditorApp {
                             }
                         }
 
-                        // Always request focus in Normal mode (for vim commands), but also in Insert mode
+                        // Always request focus
                         let something_else_has_focus = !output.response.has_focus()
                             && ctx.memory(|mem| mem.focused().is_some());
 
                         if !something_else_has_focus && !modals_open {
                             output.response.request_focus();
-                        }
-                        
-                        if let Some(cursor) = output.cursor_range {
-                            // Only update cursor_pos from widget in Insert mode
-                            if matches!(self.vim_state.mode, VimMode::Insert) {
-                                self.cursor_pos = cursor.primary.ccursor.index;
-                            }
                         }
                     });
                 });
@@ -494,21 +379,5 @@ impl CatEditorApp {
             }
             _ => {}
         }
-    }
-
-    fn get_cursor_line_col(&self) -> (usize, usize) {
-        let mut current_pos = 0;
-        let mut line = 0;
-
-        for line_text in self.text.lines() {
-            let line_len = line_text.len() + 1; // +1 for newline
-            if current_pos + line_len > self.cursor_pos || current_pos + line_text.len() >= self.cursor_pos {
-                return (line, self.cursor_pos - current_pos);
-            }
-            current_pos += line_len;
-            line += 1;
-        }
-
-        (line.saturating_sub(1), 0)
     }
 }

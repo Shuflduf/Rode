@@ -8,7 +8,6 @@ mod fuzzy_finder;
 mod hotkey;
 mod setup;
 mod terminal;
-mod vim_mode;
 
 // Main function with frame settings
 //
