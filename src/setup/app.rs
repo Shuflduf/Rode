@@ -29,8 +29,11 @@ pub struct CatEditorApp {
     pub file_tree: FileTree,
     pub terminal: Terminal,
     
-    // For tracking text changes in normal mode
+    // tracking text changes in normal mode
     last_text: String,
+
+    leader_pressed: bool,
+    leader_sequence: String,
 }
 
 impl Default for CatEditorApp {
@@ -52,6 +55,8 @@ impl Default for CatEditorApp {
             file_tree: FileTree::default(),
             terminal: Terminal::default(),
             last_text: String::new(),
+            leader_pressed: false,
+            leader_sequence: String::new(),
         }
     }
 }
@@ -143,9 +148,14 @@ impl eframe::App for CatEditorApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::TopBottomPanel::bottom("status_bar").show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
-                    // Show Vim mode on the left
+                    let mode_text = if !self.leader_sequence.is_empty() {
+                        format!("{} - {}", self.vim_state.get_mode_string(), self.leader_sequence)
+                    } else {
+                        self.vim_state.get_mode_string()
+                    };
+
                     ui.label(
-                        egui::RichText::new(self.vim_state.get_mode_string())
+                        egui::RichText::new(mode_text)
                             .color(egui::Color32::from_rgb(150, 200, 255))
                             .text_style(egui::TextStyle::Monospace),
                     );
@@ -173,13 +183,68 @@ impl eframe::App for CatEditorApp {
                 });
             });
 
+            if !modals_open && matches!(self.vim_state.mode, VimMode::Normal) {
+                ctx.input(|i| {
+                    if i.key_pressed(egui::Key::Space) && !i.modifiers.any() {
+                        self.leader_pressed = true;
+                        self.leader_sequence.clear();
+                    }
+
+                    //keys after leader
+                    if self.leader_pressed {
+                        for event in &i.events {
+                            if let egui::Event::Text(text) = event {
+                                // Skip the space character itself
+                                if text == " " {
+                                    continue;
+                                }
+                                
+                                self.leader_sequence.push_str(text);
+
+                                //complete sequences 
+                                match self.leader_sequence.as_str() {
+                                    "ff" => {
+                                        if self.current_folder.is_some() {
+                                            self.fuzzy_finder.toggle();
+                                        }
+                                        self.leader_pressed = false;
+                                        self.leader_sequence.clear();
+                                    }
+
+                                    "fb" => {
+                                        self.file_tree.toggle();
+                                        self.leader_pressed = false;
+                                        self.leader_sequence.clear();
+                                    }
+
+                                    _ => {
+                                        if self.leader_sequence.len() > 2 {
+                                            self.leader_pressed = false;
+                                            self.leader_sequence.clear();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if i.key_pressed(egui::Key::Escape) {
+                        self.leader_pressed = false;
+                        self.leader_sequence.clear();
+                    }
+                });
+            } else {
+                self.leader_pressed = false;
+                self.leader_sequence.clear();
+            }
+
             // Handle Vim motions if no modals are open
             // Store text before handling vim input
             if !modals_open && matches!(self.vim_state.mode, VimMode::Normal) {
                 self.last_text = self.text.clone();
             }
             
-            if !modals_open {
+            if !modals_open  && !self.leader_pressed{
                 self.vim_state.handle_input(ctx, &mut self.text, &mut self.cursor_pos);
             }
 
