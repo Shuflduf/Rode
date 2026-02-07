@@ -1,5 +1,6 @@
 use eframe::egui;
 use std::collections::HashMap;
+use usvg::FitTo;
 
 pub struct IconManager {
     icons: HashMap<String, egui::TextureHandle>,
@@ -27,7 +28,7 @@ impl IconManager {
             }
         };
 
-        let color_image = if icon_data.ends_with(".png") {
+        let color_image = if icon_path.ends_with(".png") {
             match image::load_from_memory(&icon_data) {
                 Ok(img) => {
                     let rgba = img.to_rgba8();
@@ -55,14 +56,16 @@ impl IconManager {
                 None => return,
             };
 
-            let pixmap_size = tree.size().to_int_size();
+            let mut pixmap = match resvg::tiny_skia::Pixmap::new(16, 16) {
+                Some(p) => p,
+                None => return,
+            };
+
             resvg::render(
                 &tree,
-                tiny_skia::Transform::from_scale(
-                    16.0 / pixmap_size.width() as f32,
-                    16.0 / pixmap_size.height() as f32,
-                ),
-                &mut pixmap.as_mut(),
+                FitTo::Size(16, 16),
+                resvg::tiny_skia::Transform::default(),
+                pixmap.as_mut(),
             );
 
             egui::ColorImage::from_rgba_unmultiplied([16, 16], pixmap.data())
@@ -74,7 +77,7 @@ impl IconManager {
             egui::TextureOptions::LINEAR,
         );
         
-        self.icon.insert(key.to_string(), texture);
+        self.icons.insert(key.to_string(), texture);
     }
 
     fn ensure_default_icon(&mut self, ctx: &egui::Context) {
@@ -101,12 +104,12 @@ impl IconManager {
             self.load_icon(ctx, &key, &icon_path);
         }
         
-        if let Some(icon) = self.icons.get(&key) {
-            icon
-        } else {
-            self.ensure_default_icon(ctx);
-            self.icons.get("default").unwrap()
+        if self.icons.contains_key(&key) {
+            return self.icons.get(&key).unwrap();
         }
+
+        self.ensure_default_icon(ctx);
+        self.icons.get("default").unwrap()
     }
 
     pub fn get_folder_icon(&mut self, ctx: &egui::Context, folder_name: &str, is_open: bool) -> &egui::TextureHandle {
@@ -117,22 +120,25 @@ impl IconManager {
             self.load_icon(ctx, &key, &icon_path);
         }
         
-        if let Some(icon) = self.icons.get(&key) {
-            icon
-        } else {
-            let fallback_path = format!("assets/icons/folders/{}.svg", if is_open { "default-open" } else { "default" });
-            let fallback_key = format!("folder:{}", fallback_path);
-            
-            if !self.icons.contains_key(&fallback_key) {
-                self.load_icon(ctx, &fallback_key, &fallback_path);
-            }
-            
-            if let Some(icon) = self.icons.get(&fallback_key) {
-                icon
-            } else {
-                self.ensure_default_icon(ctx);
-                self.icons.get("default").unwrap()
-            }
+        if self.icons.contains_key(&key) {
+            return self.icons.get(&key).unwrap();
         }
+
+        let fallback_path = format!(
+            "assets/icons/folders/{}.svg",
+            if is_open { "default-open" } else { "default" }
+        );
+        let fallback_key = format!("folder:{}", fallback_path);
+
+        if !self.icons.contains_key(&fallback_key) && !self.missing_icons.contains_key(&fallback_key) {
+            self.load_icon(ctx, &fallback_key, &fallback_path);
+        }
+
+        if self.icons.contains_key(&fallback_key) {
+            return self.icons.get(&fallback_key).unwrap();
+        }
+
+        self.ensure_default_icon(ctx);
+        self.icons.get("default").unwrap()
     }
 }

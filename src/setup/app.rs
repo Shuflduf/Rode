@@ -7,6 +7,7 @@ use crate::hotkey::find_replace::FindReplace;
 use crate::setup::menu;
 use crate::setup::theme;
 use crate::terminal::Terminal;
+use crate::icon_manager::IconManager;
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -25,6 +26,7 @@ pub struct CatEditorApp {
     pub fuzzy_finder: FuzzyFinder,
     pub file_tree: FileTree,
     pub terminal: Terminal,
+    pub icon_manager: IconManager,
 
     leader_pressed: bool,
     leader_sequence: String,
@@ -46,6 +48,7 @@ impl Default for CatEditorApp {
             fuzzy_finder: FuzzyFinder::default(),
             file_tree: FileTree::default(),
             terminal: Terminal::default(),
+            icon_manager: IconManager::new(),
             leader_pressed: false,
             leader_sequence: String::new(),
         }
@@ -114,7 +117,7 @@ impl eframe::App for CatEditorApp {
 
         menu::show_menu_bar(ctx, self);
 
-        if let Some(file_path) = self.file_tree.show(ctx) {
+        if let Some(file_path) = self.file_tree.show(ctx, &mut self.icon_manager) {
             if let Ok(content) = std::fs::read_to_string(&file_path) {
                 self.text = content;
                 self.current_file = Some(file_path.display().to_string());

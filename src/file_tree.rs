@@ -137,13 +137,7 @@ impl FileTree {
         selected_file
     }
 
-    fn show_node(
-        ui: &mut egui::Ui, 
-        node: &mut FileNode, 
-        depth: usize,
-        icon_manager: &mut crate::icon_manager::IconManager,
-        ctx: &egui::Context,
-    ) -> Option<PathBuf> {
+    fn show_node(ui: &mut egui::Ui, node: &mut FileNode, depth: usize, icon_manager: &mut crate::icon_manager::IconManager, ctx: &egui::Context) -> Option<PathBuf> {
         let mut selected_file = None;
         let indent = depth as f32 * 16.0;
 
@@ -152,7 +146,7 @@ impl FileTree {
 
             if node.is_dir {
                 let icon_texture = icon_manager.get_folder_icon(ctx, &node.name, node.is_expanded);
-                ui.image(icon_texture).max_size(egui::vec2(16.0, 16.0));
+                ui.add(egui::Image::new(icon_texture).max_size(egui::vec2(16.0, 16.0)));
 
                 let response = ui.selectable_label(false, &node.name);
 
@@ -165,7 +159,7 @@ impl FileTree {
                 }
             } else {
                 let icon_texture = icon_manager.get_file_icon(ctx, &node.name);
-                ui.image(icon_texture).max_size(egui::vec2(16.0, 16.0));
+                ui.add(egui::Image::new(icon_texture).max_size(egui::vec2(16.0, 16.0)));
 
                 let response = ui.selectable_label(false, &node.name);
 
@@ -181,7 +175,7 @@ impl FileTree {
 
         if node.is_dir && node.is_expanded {
             for child in &mut node.children {
-                if let Some(file) = Self::show_node(ui, child, depth + 1) {
+                if let Some(file) = Self::show_node(ui, child, depth + 1, icon_manager, ctx) {
                     selected_file = Some(file);
                 }
             }
