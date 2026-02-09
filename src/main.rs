@@ -10,6 +10,7 @@ mod setup;
 mod terminal;
 mod icon_manager;
 mod icon_theme;
+mod autocomplete;
 
 // Main function with frame settings
 //
