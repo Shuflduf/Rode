@@ -8,6 +8,7 @@ use crate::setup::menu;
 use crate::setup::theme;
 use crate::terminal::Terminal;
 use crate::icon_manager::IconManager;
+use crate::autocomplete::Autocomplete;
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -27,6 +28,7 @@ pub struct CatEditorApp {
     pub file_tree: FileTree,
     pub terminal: Terminal,
     pub icon_manager: IconManager,
+    pub autocomplete: Autocomplete,
 
     leader_pressed: bool,
     leader_sequence: String,
@@ -49,6 +51,7 @@ impl Default for CatEditorApp {
             file_tree: FileTree::default(),
             terminal: Terminal::default(),
             icon_manager: IconManager::new(),
+            autocomplete: Autocomplete::default(),
             leader_pressed: false,
             leader_sequence: String::new(),
         }
@@ -264,6 +267,111 @@ impl eframe::App for CatEditorApp {
                         let available = ui.available_size();
                         let output = ui.allocate_ui(available, |ui| text_edit.show(ui)).inner;
 
+                        let cursor_pos = output.cursor_range.map(|r| r.primary.ccursor.index).unwrap_or(0);
+
+                        // Handle autocomplete keyboard shortcuts
+                        if self.autocomplete.active {
+                            if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                                self.autocomplete.select_next();
+                            }
+                            if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                                self.autocomplete.select_previous();
+                            }
+                            if ui.input(|i| i.key_pressed(egui::Key::Tab) || i.key_pressed(egui::Key::Enter)) {
+                                let mut cursor = cursor_pos;
+                                self.autocomplete.apply_suggestion(&mut self.text, &mut cursor);
+                            }
+                            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                self.autocomplete.cancel();
+                            }
+                        }
+
+                        // Trigger autocomplete on Ctrl+Space
+                        if ui.input(|i| {
+                            let modifier = if cfg!(target_os = "macos") {
+                                i.modifiers.command
+                            } else {
+                                i.modifiers.ctrl
+                            };
+                            modifier && i.key_pressed(egui::Key::Space)
+                        }) {
+                            self.autocomplete.trigger(&self.text, cursor_pos);
+                        }
+
+                        // Auto-trigger while typing
+                        if output.response.changed() && !self.autocomplete.active {
+                            let (current_word, _) = Autocomplete::get_current_word(&self.text, cursor_pos);
+                            if current_word.len() >= 2 {
+                                self.autocomplete.trigger(&self.text, cursor_pos);
+                            }
+                        }
+
+                        // Show autocomplete popup
+                        if self.autocomplete.active && !self.autocomplete.suggestion.is_empty() {
+                            let galley = output.galley.clone();
+                            
+                            if let Some(cursor_range) = output.cursor_range {
+                                let cursor = galley.from_ccursor(cursor_range.primary.ccursor);
+                                
+                                if cursor.rcursor.row < galley.rows.len() {
+                                    let row_rect = galley.rows[cursor.rcursor.row].rect;
+                                    let cursor_x = if cursor.rcursor.column < galley.rows[cursor.rcursor.row].glyphs.len() {
+                                        galley.rows[cursor.rcursor.row].glyphs[cursor.rcursor.column].pos.x
+                                    } else {
+                                        row_rect.max.x
+                                    };
+                                    
+                                    let popup_pos = output.galley_pos + egui::vec2(cursor_x, row_rect.max.y + 5.0);
+                                    
+                                    // Clone suggestion to avoid borrow issues
+                                    let suggestion = self.autocomplete.suggestion.clone();
+                                    let selected_index = self.autocomplete.selected_index;
+                                    let mut clicked_index: Option<usize> = None;
+                                    
+                                    egui::Area::new("autocomplete_popup".into())
+                                        .fixed_pos(popup_pos)
+                                        .order(egui::Order::Tooltip)
+                                        .show(ctx, |ui| {
+                                            egui::Frame::popup(ui.style())
+                                                .show(ui, |ui| {
+                                                    ui.set_min_width(200.0);
+                                                    ui.set_max_height(200.0);
+                                                    
+                                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                                        for (idx, suggestion) in suggestion.iter().enumerate() {
+                                                            let is_selected = idx == selected_index;
+                                                            
+                                                            let icon = match suggestion.kind {
+                                                                crate::autocomplete::SuggestionKind::Function => "ƒ",
+                                                                crate::autocomplete::SuggestionKind::Variable => "𝑥",
+                                                                crate::autocomplete::SuggestionKind::Type => "𝑇",
+                                                                crate::autocomplete::SuggestionKind::Keyword => "⚡",
+                                                            };
+                                                            
+                                                            let response = ui.selectable_label(
+                                                                is_selected,
+                                                                format!("{} {}", icon, suggestion.text),
+                                                            );
+                                                            
+                                                            if response.clicked() {
+                                                                clicked_index = Some(idx);
+                                                            }
+                                                        }
+                                                    });
+                                                });
+                                        });
+                                    
+                                    // Apply suggestion if clicked
+                                    if let Some(idx) = clicked_index {
+                                        self.autocomplete.selected_index = idx;
+                                        let mut cursor = cursor_pos;
+                                        self.autocomplete.apply_suggestion(&mut self.text, &mut cursor);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Find/replace highlighting
                         if self.find_replace.open && !self.find_replace.find_text.is_empty() {
                             let galley = output.galley.clone();
                             let text_draw_pos = output.galley_pos;
@@ -381,7 +489,7 @@ impl CatEditorApp {
             FontData::from_static(include_bytes!("../../assets/fonts/FiraCode-SemiBold.ttf")),
         );
 
-            // use firacode for the monospace font 
+        // use firacode for the monospace font 
         fonts.families.get_mut(&FontFamily::Monospace).unwrap()
             .insert(0, "FiraCode-Regular".to_owned());
         fonts.families.get_mut(&FontFamily::Monospace).unwrap()
