@@ -324,7 +324,7 @@ impl eframe::App for CatEditorApp {
                             if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                                 self.autocomplete.select_previous();
                             }
-                            if ui.input(|i| i.key_pressed(egui::Key::Tab) || i.key_pressed(egui::Key::Enter)) {
+                            if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
                                 let mut cursor = cursor_pos;
                                 self.autocomplete.apply_suggestion(&mut self.text, &mut cursor);
                             }
