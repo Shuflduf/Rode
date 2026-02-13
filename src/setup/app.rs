@@ -36,7 +36,6 @@ pub struct CatEditorApp {
     leader_pressed: bool,
     leader_sequence: String,
     settings_open: bool,
-    autocomplete_space_count: u8,
 }
 
 impl Default for CatEditorApp {
@@ -62,7 +61,6 @@ impl Default for CatEditorApp {
             leader_pressed: false,
             leader_sequence: String::new(),
             settings_open: false,
-            autocomplete_space_count: 0,
         }
     }
 }
