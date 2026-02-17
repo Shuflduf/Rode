@@ -1,18 +1,18 @@
+use crate::syntax_highlighter::SyntaxHighlighter;
 use eframe::egui;
 use std::env;
-use crate::syntax_highlighter::SyntaxHighlighter;
 
+mod autocomplete;
 mod command_palette;
 mod config;
 mod file_tree;
 mod fuzzy_finder;
 mod hotkey;
-mod setup;
-mod terminal;
 mod icon_manager;
 mod icon_theme;
-mod autocomplete;
+mod setup;
 mod syntax_highlighter;
+mod terminal;
 mod wakatime;
 
 // Main function with frame settings
